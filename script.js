@@ -1,93 +1,63 @@
-let peerConnection;
-let localStream;
-let remoteStream;
-
-let servers = {
-  iceServers: [
-    {
-      urls: ['stun:stun1.1.google.com:19302', 'stun:stun2.1.google.com:19302'],
-    },
-  ],
+let localTracks = {
+  videoTrack: null,
+  audioTrack: null
 };
+let remoteUsers = {};
+
+let APP_ID = '890df86203c0450188e8b357ed8b341d';
+let token = '007eJxTYGDSv+OUH/1v9fYls5t+lPqEFoX+kug0uZT50G1yiLGfrKICg4WlQUqahZmRgXGygYmpgaGFRapFkrGpeWoKkDIxTPm4cFNmQyAjgwxnAgsjAwSC+CwMuYmZeQwMAAPXHeY=';
+let uid = Math.floor(Math.random() * 10000);
+let client;
 
 let init = async () => {
-  localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-  document.getElementById('user1').srcObject = localStream;
+  client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+
+  client.on('user-published', handleUserPublished);
+  client.on('user-unpublished', handleUserUnpublished);
+
+  await client.join(APP_ID, 'main', token, uid);
+
+  localTracks.videoTrack = await AgoraRTC.createCameraVideoTrack();
+  localTracks.videoTrack.play('user1');
+
+  await client.publish([localTracks.videoTrack]);
+  console.log('Published local video track');
 };
 
-let createOffer = async () => {
-  peerConnection = new RTCPeerConnection(servers);
-  remoteStream = new MediaStream();
-  document.getElementById('user2').srcObject = remoteStream;
+let handleUserPublished = async (user, mediaType) => {
+  remoteUsers[user.uid] = user;
+  await client.subscribe(user, mediaType);
+  console.log('Subscribed to remote user:', user.uid);
 
-  localStream.getTracks().forEach((track) => {
-    peerConnection.addTrack(track, localStream);
-  });
-
-  peerConnection.ontrack = async (event) => {
-    event.streams[0].getTracks().forEach((track) => {
-      remoteStream.addTrack(track);
-    });
-  };
-
-  peerConnection.onicecandidate = async (event) => {
-    if (event.candidate) {
-      document.getElementById('offer-sdp').value = JSON.stringify(peerConnection.localDescription);
-    }
-  };
-
-  let offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
-
-  document.getElementById('offer-sdp').value = JSON.stringify(offer);
-};
-
-let createAnswer = async () => {
-  peerConnection = new RTCPeerConnection(servers);
-  remoteStream = new MediaStream();
-  document.getElementById('user2').srcObject = remoteStream;
-
-  localStream.getTracks().forEach((track) => {
-    peerConnection.addTrack(track, localStream);
-  });
-
-  peerConnection.ontrack = async (event) => {
-    event.streams[0].getTracks().forEach((track) => {
-      remoteStream.addTrack(track);
-    });
-  };
-
-  peerConnection.onicecandidate = async (event) => {
-    if (event.candidate) {
-      document.getElementById('answer-sdp').value = JSON.stringify(peerConnection.localDescription);
-    }
-  };
-
-  let offer = document.getElementById('offer-sdp').value;
-  if (!offer) return alert('Retrieve offer from peer first...');
-
-  offer = JSON.parse(offer);
-  await peerConnection.setRemoteDescription(offer);
-
-  let answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(answer);
-
-  document.getElementById('anser-sdp').value = JSON.stringify(answer);
-};
-
-let addAnswer = async () => {
-  let answer = document.getElementById('answer-sdp').value;
-  if (!answer) return alert('Retrieve answer from peer first...');
-
-  answer = JSON.parse(answer);
-
-  if (!peerConnection.currentRemoteDescription) {
-    peerConnection.setRemoteDescription(answer);
+  if (mediaType === 'video') {
+    const remoteVideoTrack = user.videoTrack;
+    remoteVideoTrack.play('user2');
   }
+};
+
+let handleUserUnpublished = (user) => {
+  delete remoteUsers[user.uid];
+  console.log('User unpublished:', user.uid);
+};
+
+let leaveChannel = async () => {
+  if (localTracks.videoTrack) {
+    localTracks.videoTrack.stop();
+    localTracks.videoTrack.close();
+  }
+  
+  await client.leave();
+  console.log('Left channel');
 };
 
 init();
 
-document.getElementById('create-offer').addEventListener('click', createOffer);
-document.getElementById('create-answer').addEventListener('click', createAnswer);
-document.getElementById('add-answer').addEventListener('click', addAnswer);
+document.getElementById('create-offer').addEventListener('click', () => {
+  console.log('Agora handles connections automatically');
+});
+
+document.getElementById('create-answer').addEventListener('click', () => {
+  console.log('Agora handles connections automatically');
+});
+
+document.getElementById('add-answer').addEventListener('click', leaveChannel);

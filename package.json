@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "dependencies": {
+    "agora-rtc-sdk-ng": "^4.24.2"
+  }
+}
